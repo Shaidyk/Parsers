@@ -1,64 +1,69 @@
 import requests
 from bs4 import BeautifulSoup
-import sqlite3
 
 
-def rabota_parser():
-    print('rabota parser')
-    db = sqlite3.connect('vacancies.db')
-    sql = db.cursor()
+class RabotaParser:
+    card_vacancies_list = []
 
-    sql.execute("""CREATE TABLE IF NOT EXISTS rabota (
-        Url TEXT,
-        City TEXT,
-        Company TEXT,
-        Position TEXT
-    )""")
-    db.commit()
+    def __init__(self, jobs_name, page):
+        self.URL = 'https://rabota.ua'
+        self.jobs_name = jobs_name
+        self.page = page
 
-    sql.execute('DELETE FROM rabota')
+    def get_html(self):
+        url = f'{self.URL}/zapros/{self.jobs_name}/украина{self.page}'
+        r = requests.get(url)
+        return r
 
-    HOST = 'https://rabota.ua'
+    def get_soup_cards(self):
+        result = self.get_html().content
+        soup = BeautifulSoup(result, 'html.parser')
+        cards = soup.find_all(class_='common-info')
+        if not cards:
+            return 0
+
+        return cards
+
+    def get_content(self):
+        for card in self.get_soup_cards():
+            job_list = []
+            card_url = self.URL + card.find(class_='ga_listing').get('href')
+            card_title = card.find(class_='ga_listing').get('title')
+            company_name = card.find(class_='company-profile-name').get('title')
+            location = card.find(class_='location').text
+
+            job_list.append(card_url)
+            job_list.append(location)
+            job_list.append(company_name)
+            job_list.append(card_title)
+
+            if job_list not in self.card_vacancies_list:
+                self.card_vacancies_list.append(job_list)
+        return self.card_vacancies_list
+
+
+class RabotaContent:
+    jobs_list = []
     jobs_name_list = ['trainee-python',
                       'junior-python',
                       'python-back-end-developer',
                       'python-trainee-developer']
 
-    card_url_list = []
+    def get_info(self):
+        for jobs_name in self.jobs_name_list:
+            print(f'rabota.ua: {jobs_name}')
+            self.jobs_list.append([jobs_name, '', '', ''])
+            content_iterator = 1
+            page = ''
+            while True:
+                if not RabotaParser(jobs_name, page).get_soup_cards():
+                    break
+                content = RabotaParser(jobs_name, page).get_content()
 
-    for jobs_name in jobs_name_list:
-        page = '/'
-        i = 1
-        card_url_list.append(['--------', f'{jobs_name}', '--------', '--------'])
-        print(jobs_name)
-        while True:
-            url = f'https://rabota.ua/zapros/{jobs_name}/%d1%83%d0%ba%d1%80%d0%b0%d0%b8%d0%bd%d0%b0{page}'
-            i += 1
-            page = f'/pg{i}'
-            r = requests.get(url)
-            result = r.content
-            soup = BeautifulSoup(result, 'html.parser')
-            cards = soup.find_all(class_='common-info')
+                content_iterator += 1
+                page = f'/pg{content_iterator}'
 
-            if not cards:  # if cards == []:
-                break
-
-            for card in cards:
-                job_list = []
-                card_url = HOST + card.find(class_='ga_listing').get('href')
-                card_title = card.find(class_='ga_listing').get('title')
-                company_name = card.find(class_='company-profile-name').get('title')
-                location = card.find(class_='location').text
-
-                job_list.append(card_url)
-                job_list.append(location)
-                job_list.append(company_name)
-                job_list.append(card_title)
-
-                if job_list not in card_url_list:
-                    card_url_list.append(job_list)
-
-    for line in card_url_list:
-        sql.execute('INSERT INTO rabota VALUES (?, ?, ?, ?)', (line[0], line[1], line[2], line[3]))
-        db.commit()
-
+                for item in content:
+                    if item not in self.jobs_list:
+                        self.jobs_list.append(item)
+        return self.jobs_list
